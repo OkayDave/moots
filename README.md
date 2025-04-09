@@ -1,3 +1,7 @@
+## ⚠️ This is a work-in-progress and not yet fit for human consumption ⚠️
+
+---
+
 # Moots
 
 Moots is a simple, open-source mutation testing tool for Ruby, inspired by the mutant gem but with a more focused scope. It helps you improve your test suite by introducing small changes (mutations) to your code and checking if your tests can detect these changes.
