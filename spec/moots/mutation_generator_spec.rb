@@ -8,6 +8,7 @@ RSpec.describe Moots::MutationGenerator do
   end
 
   { "+" => "-", "-" => "+", "*" => "/", "/" => "*",
+    "==" => "!=", "!=" => "==", ">" => ">=", ">=" => ">", "<" => "<=", "<=" => "<",
     "&&" => "||", "||" => "&&", "and" => "or", "or" => "and" }.each do |original, replacement|
     it "mutates #{original} to #{replacement}" do
       code = "def calculate(a, b); a #{original} b; end"
@@ -27,6 +28,16 @@ RSpec.describe Moots::MutationGenerator do
     "a && (b || c)" => ["a || (b || c)", "a && (b && c)"],
     "a && b && c" => ["a && b || c", "a || b && c"],
     "a + b; a + b" => ["a - b; a + b", "a + b; a - b"],
+    "a > b; a > b" => ["a >= b; a > b", "a > b; a >= b"],
+    "(a == b) != c" => ["(a == b) == c", "(a != b) != c"],
+    "a + b <= c && d != e" => ["a + b <= c || d != e", "a + b < c && d != e",
+                               "a - b <= c && d != e", "a + b <= c && d == e"],
+    '"a>=b" >= "c<d" # >= stays here' => ['"a>=b" > "c<d" # >= stays here'],
+    "a.==(b)" => ["a.!=(b)"],
+    "a&.<=(b)" => ["a&.<(b)"],
+    "# é 😀\r\ndéjà <\r\n  limite\r\n" => ["# é 😀\r\ndéjà <=\r\n  limite\r\n"],
+    "# é 😀\r\ndéjà >=\r\n  limite\r\n" => ["# é 😀\r\ndéjà >\r\n  limite\r\n"],
+    'puts "#{a > b}"' => ['puts "#{a >= b}"'],
     '"a+b" + "c+d" # a+b' => ['"a+b" - "c+d" # a+b'],
     "a + /x+y/" => ["a - /x+y/"],
     "a.+(b)" => ["a.-(b)"],
@@ -49,8 +60,9 @@ RSpec.describe Moots::MutationGenerator do
   end
 
   ["", "# comment\n", "42", '"a + b && c"', "/a+b/", "+a; -b; !c; ~d",
-   "a == b; a != b; a > b; a % b; a ** b", "a += 1; b ||= 2; c &&= 3",
-   "def +(other); other; end", "foo; obj.foo; [1, 2]"].each do |code|
+   "a === b; a <=> b; a =~ b; a !~ b; a % b; a ** b", "a += 1; b ||= 2; c &&= 3",
+   "def +(other); other; end", "def ==(other); other; end", "def <=(other); other; end",
+   ':==; :!=; :>; :>=; :<; :<=; "a == b"; /a>=b/ # a <= b', "foo; obj.foo; [1, 2]"].each do |code|
     it "does not invent mutations for #{code.inspect}" do
       expect(generator.generate_mutations(code)).to be_empty
     end
@@ -64,6 +76,16 @@ RSpec.describe Moots::MutationGenerator do
 
   it "defaults the file label for strings" do
     expect(generator.generate_mutations("1 + 2").first.file_path).to eq("(string)")
+  end
+
+  it "preserves byte offsets and operator lines for comparisons after multibyte text" do
+    code = "# é 😀\r\ndéjà\r\n  .>=(limite)\r\n"
+    mutation = generator.generate_mutations(code, file_path: "boundary.rb").first
+    expect(mutation).to have_attributes(
+      original_code: "déjà\r\n  .>=(limite)", mutated_code: "déjà\r\n  .>(limite)",
+      line_number: 3, file_path: "boundary.rb", start_offset: "# é 😀\r\n".bytesize
+    )
+    expect(mutation.apply(code)).to eq("# é 😀\r\ndéjà\r\n  .>(limite)\r\n")
   end
 
   ["def broken; a + b", "a +", "a + b\n)"].each do |code|
