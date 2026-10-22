@@ -15,11 +15,11 @@ RSpec.describe "Reporting through the executable" do
   end
 
   it "flushes baseline and mutation progress while the test subprocess is still blocked" do
-    in_project do
+    in_project do |directory|
       path = write_source("math.rb", "VALUE = 1 + 2")
       write_source("check.rb", <<~RUBY)
         require_relative "math"
-        release = VALUE == 3 ? "release-baseline" : "release-mutation"
+        release = File.join(#{directory.dump}, VALUE == 3 ? "release-baseline" : "release-mutation")
         sleep 0.01 until File.exist?(release)
       RUBY
       configure([RbConfig.ruby, "check.rb"])
@@ -27,6 +27,7 @@ RSpec.describe "Reporting through the executable" do
         stdin.close
         begin
           Timeout.timeout(10) do
+            expect(stdout.readline).to eq("Preparing isolated working copy...\n")
             expect(stdout.readline).to eq("Running baseline tests...\n")
             File.write("release-baseline", "")
             expect(stdout.readline).to eq("Baseline passed.\n")
@@ -46,12 +47,12 @@ RSpec.describe "Reporting through the executable" do
   end
 
   it "produces clean JSON despite noisy tests and reruns the exact reported mutation" do
-    in_project do
+    in_project do |directory|
       source = "VALUES = [1 + 2, 4 > 3]"
       path = write_source("math.rb", source)
       write_source("check.rb", <<~RUBY)
         require_relative "math"
-        File.open("invocations", "a") { |file| file.puts(File.binread("math.rb")) }
+        File.open(#{File.join(directory, "invocations").dump}, "a") { |file| file.puts(File.binread("math.rb")) }
         puts "test chatter"
       RUBY
       configure([RbConfig.ruby, "check.rb"], "config with spaces.yml")

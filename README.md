@@ -61,6 +61,8 @@ exclude: []
 test_command: bundle exec rspec
 timeout: 60
 mutation: null
+isolation: true
+workspace_exclude: [tmp, coverage, pkg, .rspec_status]
 ```
 
 Paths are relative to the current working directory, including when using an
@@ -152,12 +154,32 @@ Compound assignments (`+=`, `&&=`, etc.), unary operators, other comparisons
 (`===`, `<=>`, `=~`, `!~`), constants and method removal are not currently mutated.
 Equivalent mutations are not automatically filtered.
 
-## Execution and restoration
+## Execution and isolation
 
-Moots first runs the original suite. A failing baseline aborts the run before
-any source changes. It then processes source files sequentially and restores the
-original bytes after every mutation using an `ensure` block, including when a
-test command raises, times out or is interrupted.
+Moots copies the current project into a temporary directory and runs the baseline
+and mutations there. Uncommitted and untracked files are included; no Git commit
+is required. The original checkout is never used for mutation writes. Reported
+paths and mutation IDs still refer to that checkout.
+
+A failing baseline aborts before any mutations. Within the copy, files are
+processed sequentially and restored after each mutation, including errors and
+interruptions. Each run uses one copy, so test-generated artifacts persist
+between invocations within that run. The copy is removed when the run finishes
+or raises. Hard termination may leave an orphan copy, but mutation writes still
+cannot affect the original files.
+
+The `workspace_exclude` globs omit files or entire directories from the copy;
+they are separate from `exclude`, which only controls mutation targets. The
+default copy exclusions are `tmp`, `coverage`, `pkg` and `.rspec_status`. Supplying
+your own list replaces those defaults; use `[]` if your tests need everything.
+Git, Mercurial and Subversion metadata are always omitted, including nested
+repositories and worktree pointer files. Installed dependencies such as
+`vendor/bundle` are copied, so large projects may need more time and disk space.
+
+Links (including directory junctions), special files and source globs that escape
+the project are rejected in isolated mode. Exclude unnecessary linked paths with
+`workspace_exclude`. The system temporary directory must be outside the project.
+See [docs/isolation.md](docs/isolation.md) for path handling and compatibility.
 
 Source read/write failures and invalid Ruby syntax are reported as errors;
 they are not silently excluded from a score. Missing commands, shell execution
@@ -169,11 +191,16 @@ output and standard error are drained concurrently. On POSIX systems the runner
 kills the process group on interruption or timeout; on Windows it uses
 `taskkill /T /F` for the command's process tree.
 
-Run in a disposable checkout or commit your work first. Moots edits selected
-files in place; do not edit them or run another mutation job concurrently.
-Hard process termination, power loss, a failed restoration write, or a child
-that escapes its process group cannot be made safe by Ruby's `ensure` block.
-Windows descendants whose parent has already exited may outlive tree cleanup.
+Isolation protects the checkout from Moots' mutation writes; it is not a security
+sandbox. Test commands can still access external files, services and databases.
+Avoid editing the project while the snapshot is being copied. Windows descendants
+whose parent has already exited may outlive tree cleanup.
+
+For projects that require their original location or Git metadata, explicitly
+set `isolation: false`. This restores the previous in-place behavior: use a
+disposable checkout and avoid concurrent edits or mutation jobs. An `ensure`
+block restores source bytes after normal failures, but cannot protect against
+hard termination, power loss or a failed restoration write.
 
 ## Ruby API
 
@@ -202,7 +229,8 @@ Directly constructed mutations now require `start_offset:`.
 Invalid input raises `Moots::Error`; source I/O errors also propagate from the API.
 
 An optional block receives progress hashes while `Moots.run` still returns the
-results array. Events are `:baseline_started`, `:baseline_passed`,
+results array. Events are `:workspace_started` (isolated runs only, before copying),
+`:baseline_started`, `:baseline_passed`,
 `:mutation_started` (with `:mutation`, one-based `:index`, and `:total`) and
 `:mutation_finished` (with `:result`, `:index`, and `:total`). Callbacks execute
 before source modification or after restoration, and callback exceptions propagate.

@@ -11,7 +11,9 @@ module Moots
       exclude: [].freeze,
       test_command: "bundle exec rspec",
       timeout: 60,
-      mutation: nil
+      mutation: nil,
+      isolation: true,
+      workspace_exclude: ["tmp", "coverage", "pkg", ".rspec_status"].freeze
     }.freeze
 
     def self.load(path)
@@ -30,6 +32,9 @@ module Moots
       @options = DEFAULTS.merge(normalized.transform_keys(&:to_sym))
       validate_patterns(:include)
       validate_patterns(:exclude)
+      validate_patterns(:workspace_exclude)
+      raise Error, "isolation must be true or false" unless [true, false].include?(@options[:isolation])
+
       validate_command
       validate_mutation
       timeout = @options[:timeout]

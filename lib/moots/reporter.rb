@@ -17,6 +17,8 @@ module Moots
 
     def call(event)
       case event.fetch(:type)
+      when :workspace_started
+        @progress.puts("Preparing isolated working copy...")
       when :baseline_started
         @progress.puts("Running baseline tests...")
       when :baseline_passed
