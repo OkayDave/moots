@@ -1,137 +1,141 @@
 # frozen_string_literal: true
 
 RSpec.describe Moots do
-  let(:config) do
-    {
-      include: ["lib/**/*.rb"],
-      exclude: [],
-      test_command: "bundle exec rspec"
-    }
+  let(:runner) { instance_double(Moots::TestRunner) }
+  let(:config) { { include: ["*.rb"], exclude: [], test_command: ["test-suite"], timeout: 2 } }
+
+  before do
+    allow(Moots::TestRunner).to receive(:new).and_return(runner)
+    allow(runner).to receive(:run_tests).with(["test-suite"], timeout: 2).and_return(test_result(true))
   end
 
-  describe ".run" do
-    let(:generator) { instance_double(Moots::MutationGenerator) }
-    let(:test_runner) { instance_double(Moots::TestRunner) }
-    let(:mutation) do
-      instance_double(
-        Moots::Mutation,
-        original_code: "a + b",
-        mutated_code: "a - b",
-        line_number: 1,
-        file_path: "lib/example.rb"
-      )
+  it "checks the baseline and evaluates each mutation against the original source" do
+    in_project do
+      path = write_source("math.rb", "a + b; a * b")
+      observed = []
+      allow(runner).to receive(:run_tests) do
+        observed << File.binread(path)
+        test_result(observed.size == 1, "suite output")
+      end
+      results = described_class.run(config)
+      expect(observed).to eq(["a + b; a * b", "a - b; a * b", "a + b; a / b"])
+      expect(results.map(&:killed)).to eq([true, true])
+      expect(results.map { |r| r.test_result.output }).to eq(["suite output", "suite output"])
+      expect(results.map { |r| r.mutation.file_path }).to eq([path, path])
+      expect(File.binread(path)).to eq("a + b; a * b")
     end
+  end
 
-    before do
-      allow(Moots::MutationGenerator).to receive(:new).and_return(generator)
-      allow(Moots::TestRunner).to receive(:new).and_return(test_runner)
-      allow(generator).to receive(:generate_mutations).and_return([mutation])
+  it "reports surviving mutations" do
+    in_project do
+      write_source
+      expect(described_class.run(config).map(&:killed)).to eq([false])
     end
+  end
 
-    context "when tests fail for a mutation" do
-      before do
-        allow(test_runner).to receive(:run_tests).and_return(
-          instance_double(Moots::TestResult, success?: false, output: "Test failure")
-        )
-      end
-
-      it "marks the mutation as killed" do
-        results = described_class.run(config)
-
-        expect(results.first).to have_attributes(
-          mutation: mutation,
-          killed: true
-        )
-      end
+  it "refuses to mutate when the baseline fails" do
+    in_project do
+      path = write_source
+      allow(runner).to receive(:run_tests).and_return(test_result(false, "broken suite"))
+      expect(File).not_to receive(:binwrite)
+      expect { described_class.run(config) }.to raise_error(Moots::Error, /Baseline tests failed.*\nbroken suite/)
+      expect(File.binread(path)).to eq("a + b")
+      expect(runner).to have_received(:run_tests).once
     end
+  end
 
-    context "when tests pass for a mutation" do
-      before do
-        allow(test_runner).to receive(:run_tests).and_return(
-          instance_double(Moots::TestResult, success?: true, output: "")
-        )
-      end
+  [RuntimeError, Moots::Error, Interrupt].each do |error|
+    it "restores source bytes when execution raises #{error}" do
+      in_project do
+        code = "# é\r\na + b\r\n".b
+        path = write_source("math.rb", code)
+        calls = 0
+        allow(runner).to receive(:run_tests) do
+          calls += 1
+          raise error, "interrupted" if calls == 2
 
-      it "marks the mutation as survived" do
-        results = described_class.run(config)
-
-        expect(results.first).to have_attributes(
-          mutation: mutation,
-          killed: false
-        )
-      end
-    end
-
-    context "with file handling" do
-      let(:temp_file) { Tempfile.new(["test", ".rb"]) }
-      let(:code) { "def add(a, b); a + b; end" }
-
-      before do
-        temp_file.write(code)
-        temp_file.close
-        allow(Dir).to receive(:[]).with("lib/**/*.rb").and_return([temp_file.path])
-      end
-
-      after do
-        temp_file.unlink
-      end
-
-      it "restores original code after mutation" do
-        allow(test_runner).to receive(:run_tests).and_return(
-          instance_double(Moots::TestResult, success?: true, output: "")
-        )
-
-        described_class.run(config)
-
-        expect(File.read(temp_file.path)).to eq(code)
+          test_result(true)
+        end
+        expect { described_class.run(config) }.to raise_error(error, "interrupted")
+        expect(File.binread(path)).to eq(code)
       end
     end
+  end
 
-    context "with configuration" do
-      it "handles multiple include patterns" do
-        config[:include] = ["lib/**/*.rb", "app/**/*.rb"]
-        allow(Dir).to receive(:[]).with("lib/**/*.rb").and_return(["lib/file1.rb"])
-        allow(Dir).to receive(:[]).with("app/**/*.rb").and_return(["app/file2.rb"])
-
-        results = described_class.run(config)
-
-        expect(results).to be_an(Array)
+  it "restores source after a partially failed write and surfaces the error" do
+    in_project do
+      path = write_source
+      allow(File).to receive(:binwrite).and_call_original
+      allow(File).to receive(:binwrite).with(path, "a - b") do
+        File.binwrite(path, "partial")
+        raise Errno::ENOSPC, path
       end
-
-      it "handles exclude patterns" do
-        config[:exclude] = ["lib/vendor/**/*.rb"]
-        allow(Dir).to receive(:[]).with("lib/**/*.rb").and_return(["lib/file.rb", "lib/vendor/ignored.rb"])
-        allow(Dir).to receive(:[]).with("lib/vendor/**/*.rb").and_return(["lib/vendor/ignored.rb"])
-
-        results = described_class.run(config)
-
-        expect(results).to be_an(Array)
-      end
+      expect { described_class.run(config) }.to raise_error(Errno::ENOSPC)
+      expect(File.binread(path)).to eq("a + b")
     end
+  end
 
-    context "with error handling" do
-      it "handles non-existent files gracefully" do
-        allow(Dir).to receive(:[]).with("lib/**/*.rb").and_return(["nonexistent.rb"])
+  it "does not write stale source if applying a mutation fails" do
+    in_project do
+      write_source
+      allow_any_instance_of(Moots::Mutation).to receive(:apply).and_raise(Moots::Error, "stale")
+      expect(File).not_to receive(:binwrite)
+      expect { described_class.run(config) }.to raise_error(Moots::Error, "stale")
+    end
+  end
 
-        results = described_class.run(config)
+  it "deduplicates include patterns, honors exclusions and skips directories" do
+    in_project do
+      write_source("lib/a.rb")
+      write_source("lib/b.rb", "a * b")
+      write_source("lib/skip.rb")
+      write_source("app/c.rb", "a / b")
+      FileUtils.mkdir_p("lib/directory.rb")
+      results = described_class.run(config.merge(
+                                      include: ["lib/*.rb", "./lib/a.rb", "app/*.rb"],
+                                      exclude: ["./lib/skip.rb"]
+                                    ))
+      expect(results.map { |result| File.basename(result.mutation.file_path) }).to eq(%w[c.rb a.rb b.rb])
+      expect(results.size).to eq(3)
+      expect(runner).to have_received(:run_tests).exactly(4).times
+    end
+  end
 
-        expect(results).to be_an(Array)
-        expect(results).to be_empty
-      end
+  it "handles a missing glob and a source file with no operators" do
+    in_project do
+      write_source("constant.rb", "VALUE = 42")
+      expect(described_class.run(config.merge(include: ["missing/*.rb", "*.rb"]))).to eq([])
+      expect(runner).to have_received(:run_tests).once
+    end
+  end
 
-      it "handles unreadable files gracefully" do
-        temp_file = Tempfile.new(["test", ".rb"])
-        temp_file.close
-        File.chmod(0, temp_file.path)
-        allow(Dir).to receive(:[]).with("lib/**/*.rb").and_return([temp_file.path])
+  it "surfaces unreadable files instead of silently returning a misleading score" do
+    in_project do
+      path = write_source
+      allow(File).to receive(:binread).with(path).and_raise(Errno::EACCES)
+      expect { described_class.run(config) }.to raise_error(Errno::EACCES)
+    end
+  end
 
-        results = described_class.run(config)
+  it "rejects invalid source without changing it" do
+    in_project do
+      path = write_source("broken.rb", "def broken; a + b")
+      expect { described_class.run(config) }.to raise_error(Moots::Error, /broken.rb/)
+      expect(File.binread(path)).to eq("def broken; a + b")
+    end
+  end
 
-        expect(results).to be_an(Array)
-        expect(results).to be_empty
+  it "validates configuration before executing any command" do
+    expect(runner).not_to receive(:run_tests)
+    expect { described_class.run(timeout: 0) }.to raise_error(Moots::Error, /timeout/)
+  end
 
-        temp_file.unlink
-      end
+  it "uses default patterns and commands when no configuration is supplied" do
+    in_project do
+      write_source("app/model.rb")
+      allow(runner).to receive(:run_tests).with("bundle exec rspec", timeout: 60).and_return(test_result(true))
+      expect(described_class.run.map(&:killed)).to eq([false])
+      expect(runner).to have_received(:run_tests).with("bundle exec rspec", timeout: 60).twice
     end
   end
 end

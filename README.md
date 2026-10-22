@@ -1,221 +1,194 @@
-## ⚠️ This is a work-in-progress and not yet fit for human consumption ⚠️
-
----
-
 # Moots
 
-Moots is a simple, open-source mutation testing tool for Ruby, inspired by the mutant gem but with a more focused scope. It helps you improve your test suite by introducing small changes (mutations) to your code and checking if your tests can detect these changes.
+Moots is a small, MIT-licensed mutation testing tool for Ruby. It changes one
+operator in your source, runs your tests in a fresh process, and reports whether
+the tests caught the change.
 
-## What is Mutation Testing?
+A **killed** mutation made the tests fail. A **surviving** mutation left them
+passing and is worth investigating: it may reveal a missing assertion, untested
+behavior, or an equivalent change.
 
-Mutation testing is a method of evaluating the quality of your test suite. It works by:
+Moots is still an early project with a deliberately small set of mutation
+operators. A perfect score measures those operators; it does not prove that a
+program is correct.
 
-1. Making small changes (mutations) to your code
-2. Running your test suite against the mutated code
-3. Checking if your tests can detect these changes
+## Ruby support
 
-If your tests fail when the code is mutated, that's good! It means your tests are catching potential bugs. If your tests pass with mutated code, it suggests your test coverage might need improvement.
+Supports CRuby **3.3, 3.4 and 4.0**, with a minimum of Ruby 3.3. These are the
+[maintained Ruby series](https://www.ruby-lang.org/en/downloads/branches/).
+CI runs all three on Linux and Ruby 4.0 on Windows and macOS.
 
-## Why Use Moots?
-
-While there are other mutation testing tools available for Ruby (like mutant), Moots aims to be:
-
-- **Simple**: Focused on core mutation testing features
-- **Fast**: Optimized for quick feedback cycles
-- **Open Source**: Fully MIT licensed and community-driven
-- **Rails-friendly**: Designed with Ruby on Rails applications in mind
+Parsing uses [Prism](https://github.com/ruby/prism), including modern Ruby syntax.
+The old `parser` gem only handles syntax through Ruby 3.3. Prism is the only
+runtime gem dependency; development tools are kept in the Gemfile.
 
 ## Installation
 
-Add this line to your application's Gemfile:
+Add Moots to your test/development bundle:
 
 ```ruby
-gem 'moots'
+group :development, :test do
+  gem "moots"
+end
 ```
 
-And then execute:
+For this unreleased checkout, use `gem "moots", path: "/path/to/moots"` instead,
+or run `bundle exec rake install` here. Then run `bundle install`.
 
-```bash
-bundle install
-```
+Windows installations need RubyInstaller's MSYS2 development toolchain to build
+Prism and development dependencies (`ridk install`). This repository can also be
+developed under WSL with a supported Linux Ruby.
 
-## Basic Usage
+## Usage
 
-To run mutation testing on your codebase:
+From the project root:
 
-```bash
+```sh
 bundle exec moots
+bundle exec moots --config config/moots.yml
+bundle exec moots --help
 ```
 
-By default, Moots will:
-1. Analyse your test suite
-2. Generate mutations for your code
-3. Run your tests against each mutation
-4. Report which mutations were caught and which weren't
-
-## Configuration
-
-Create a `.moots.yml` file in your project root to configure Moots:
+Moots reads `.moots.yml` when present. Without it, the defaults below apply:
 
 ```yaml
-# Example configuration
 include:
   - app/**/*.rb
   - lib/**/*.rb
-exclude:
-  - app/models/concerns/**/*.rb
+exclude: []
 test_command: bundle exec rspec
+timeout: 60
 ```
 
-## How It Works: A Deep Dive
+Paths are relative to the current working directory, including when using an
+explicit configuration path. Overlapping include patterns are deduplicated;
+exclude patterns take precedence. Unknown options, malformed YAML and invalid
+option values are errors.
 
-Let's break down exactly how Moots performs mutation testing, step by step:
+`test_command` can also be an argument array, which passes arguments literally
+without shell interpretation:
 
-### 1. Finding Files to Test
+```yaml
+test_command: [bundle, exec, rspec, spec/models]
+```
 
-Moots starts by scanning your codebase for Ruby files based on your configuration:
-- It uses Ruby's `Dir[]` glob pattern matching to find files matching your `include` patterns
-- It excludes any files matching your `exclude` patterns
-- It checks each file is readable before processing
+The command must run the relevant tests in a fresh process and reload changed
+source. Avoid persistent test preloaders such as Spring. A command that runs no
+tests can still exit successfully; make sure your test runner rejects empty
+suites when appropriate.
 
-### 2. Parsing and Understanding Your Code
+Exit statuses:
 
-For each Ruby file, Moots:
-1. Reads the file content
-2. Uses the [parser](https://github.com/whitequark/parser) gem to convert your Ruby code into an Abstract Syntax Tree (AST)
-   - An AST is a tree representation of your code's structure
-   - This lets Moots understand your code's meaning, not just its text
+| Status | Meaning |
+| --- | --- |
+| 0 | At least one mutation, all killed (or help/version requested) |
+| 1 | Survivors, or no mutations generated |
+| 2 | Configuration, source, baseline or command execution error |
 
-### 3. Generating Mutations
+## Mutation behavior
 
-Moots walks through the AST looking for code it can mutate. Currently, it handles:
+Supported replacements:
 
-a) Arithmetic Operators:
-   - Changes `+` to `-`
-   - Changes `-` to `+`
-   - Changes `*` to `/`
-   - Changes `/` to `*`
+| Original | Replacement |
+| --- | --- |
+| `+` | `-` |
+| `-` | `+` |
+| `*` | `/` |
+| `/` | `*` |
+| `&&` | `||` |
+| `||` | `&&` |
+| `and` | `or` |
+| `or` | `and` |
 
-b) Boolean Operators:
-   - Changes `&&` to `||`
-   - Changes `||` to `&&`
+Each mutation changes exactly one operator token, including explicit operator
+calls such as `a.+(b)`. Other operators on the same line, string contents,
+comments and surrounding formatting are preserved. Byte offsets handle
+multiline expressions, Unicode and CRLF files.
 
-For example, this code:
+Compound assignments (`+=`, `&&=`, etc.), unary operators, comparisons,
+constants and method removal are not currently mutated. Equivalent mutations
+are not automatically filtered.
+
+## Execution and restoration
+
+Moots first runs the original suite. A failing baseline aborts the run before
+any source changes. It then processes source files sequentially and restores the
+original bytes after every mutation using an `ensure` block, including when a
+test command raises, times out or is interrupted.
+
+Source read/write failures and invalid Ruby syntax are reported as errors;
+they are not silently excluded from a score. Missing commands, shell execution
+failures (exit 126/127), signal termination and timeouts are also errors rather
+than successful kills. Other nonzero exits count as killed mutations.
+
+The timeout applies to each test invocation, including the baseline. Standard
+output and standard error are drained concurrently. On POSIX systems the runner
+kills the process group on interruption or timeout; on Windows it uses
+`taskkill /T /F` for the command's process tree.
+
+Run in a disposable checkout or commit your work first. Moots edits selected
+files in place; do not edit them or run another mutation job concurrently.
+Hard process termination, power loss, a failed restoration write, or a child
+that escapes its process group cannot be made safe by Ruby's `ensure` block.
+Windows descendants whose parent has already exited may outlive tree cleanup.
+
+## Ruby API
+
 ```ruby
-def add(a, b)
-  a + b
+require "moots"
+
+results = Moots.run(
+  include: ["lib/**/*.rb"],
+  exclude: ["lib/generated/**/*.rb"],
+  test_command: ["bundle", "exec", "rspec"],
+  timeout: 60
+)
+
+results.each do |result|
+  puts [result.mutation.file_path, result.mutation.line_number, result.killed].inspect
+  puts result.test_result.output
 end
 ```
 
-Becomes:
-```ruby
-def add(a, b)
-  a - b  # The + operator was mutated to -
-end
+`MutationGenerator#generate_mutations(code, file_path: "example.rb")` returns
+mutations with original/replacement expressions and a byte offset.
+`Mutation#apply(code)` returns a changed copy and rejects mismatched source.
+Directly constructed mutations now require `start_offset:`.
+Invalid input raises `Moots::Error`; source I/O errors also propagate from the API.
+
+## Development and verification
+
+```sh
+bundle install
+bundle exec rake spec       # randomized RSpec suite
+bundle exec rake coverage   # 100% line and branch coverage, overall and per file
+bundle exec rake rubocop
+bundle exec rake mutation   # run Moots against all lib/**/*.rb files
+bundle exec rake verify     # lint, coverage, then dogfood
+bundle exec rake build
 ```
 
-### 4. Testing Each Mutation
+Coverage includes unloaded runtime files. Only `lib/moots/version.rb` is excluded,
+because Bundler loads its release constant before coverage starts; the version
+is checked separately. No runtime implementation file is excluded from
+self-mutation. The mutation task disables coverage thresholds in child suites
+so kills come from test failures rather than uncovered-line enforcement.
 
-For each mutation, Moots:
-1. Temporarily modifies your source file with the mutation
-2. Runs your test command (e.g., `bundle exec rspec`)
-3. Captures the test output and result
-4. Restores your original code
-5. Records whether the mutation was "killed" (tests failed) or "survived" (tests passed)
+Tests use temporary projects, real subprocesses and controlled failures. They
+exercise every supported operator, exact mutation locations, modern syntax,
+encodings, configuration and CLI behavior, baseline validation, process output,
+deadlines and byte-for-byte restoration. The integration suite proves that
+strong tests kill mutations, weak tests leave survivors, and broken baselines
+are rejected.
 
-### 5. Safety Measures
+The self-mutation run must generate at least one mutation and kill every one.
+CI keeps this check on all supported Linux Ruby versions. Review surviving
+mutations and improve behavioral assertions; do not exclude implementation
+files just to get a green result.
 
-Moots includes several safety features:
-- Always restores your original code, even if tests fail
-- Handles file read/write errors gracefully
-- Skips unreadable or invalid files
-- Uses Ruby's `Open3.capture3` to safely run test commands
+## Contributing and license
 
-### Further Reading
-
-- [Abstract Syntax Trees (AST)](https://en.wikipedia.org/wiki/Abstract_syntax_tree)
-- [Ruby Parser Documentation](https://github.com/whitequark/parser)
-- [Mutation Testing Paper](https://www.cs.cmu.edu/~agroce/testing21.pdf) by Alex Groce et al.
-- [Why Mutation Testing?](https://testing.googleblog.com/2021/04/mutation-testing.html) - Google Testing Blog
-
-## Code Architecture
-
-Moots is built with a clean, modular architecture. Here's how the different components work together:
-
-### Core Classes
-
-1. **`Moots` (main.rb)**
-   - The entry point of the application
-   - Orchestrates the mutation testing process
-   - Handles configuration loading and file processing
-   - Manages the overall mutation testing workflow
-
-2. **`MutationGenerator` (mutation_generator.rb)**
-   - Responsible for analyzing Ruby code and generating mutations
-   - Uses the parser gem to build ASTs
-   - Walks through the AST to find mutation points
-   - Generates different types of mutations (arithmetic, boolean)
-   - Handles file path inclusion/exclusion logic
-
-3. **`TestRunner` (test_runner.rb)**
-   - Executes test commands against mutated code
-   - Captures and processes test output
-   - Handles test command execution safely
-   - Manages stdout/stderr capture
-   - Determines if mutations were killed or survived
-
-4. **`Configuration` (configuration.rb)**
-   - Manages loading and validation of `.moots.yml`
-   - Handles default configuration values
-   - Validates include/exclude patterns
-   - Manages test command configuration
-
-### Supporting Classes
-
-1. **`Mutation` (mutation.rb)**
-   - Represents a single code mutation
-   - Stores mutation location and type
-   - Handles mutation application and reversion
-   - Tracks mutation status (killed/survived)
-
-2. **`FileHandler` (file_handler.rb)**
-   - Manages file operations
-   - Handles file reading and writing
-   - Ensures safe file modifications
-   - Manages file backup and restoration
-
-### How They Work Together
-
-1. `Moots` loads configuration and starts the process
-2. `MutationGenerator` analyzes files and creates mutations
-3. For each mutation:
-   - `FileHandler` backs up the original file
-   - `Mutation` applies the change
-   - `TestRunner` runs the tests
-   - `FileHandler` restores the original file
-4. Results are collected and reported
-
-This modular design makes it easy to:
-- Add new mutation types
-- Support different test runners
-- Extend configuration options
-- Handle different file types
-- Add new features
-
-## Development
-
-After checking out the repo, run `bin/setup` to install dependencies. Then, run `rake spec` to run the tests. You can also run `bin/console` for an interactive prompt that will allow you to experiment.
-
-To install this gem onto your local machine, run `bundle exec rake install`. To release a new version, update the version number in `version.rb`, and then run `bundle exec rake release`, which will create a git tag for the version, push git commits and the created tag, and push the `.gem` file to [rubygems.org](https://rubygems.org).
-
-## Contributing
-
-Bug reports and pull requests are welcome on GitHub at https://github.com/OkayDave/moots. This project is intended to be a safe, welcoming space for collaboration, and contributors are expected to adhere to the [code of conduct](https://github.com/OkayDave/moots/blob/master/CODE_OF_CONDUCT.md).
-
-## License
-
-The gem is available as open source under the terms of the [MIT License](https://opensource.org/licenses/MIT).
-
-## Code of Conduct
-
-Everyone interacting in the Moots project's codebases, issue trackers, chat rooms and mailing lists is expected to follow the [code of conduct](https://github.com/OkayDave/moots/blob/master/CODE_OF_CONDUCT.md).
+Bug reports and pull requests are welcome at
+[OkayDave/moots](https://github.com/OkayDave/moots).
+Released under the [MIT License](LICENSE.txt).
+Contributors must follow the [Code of Conduct](CODE_OF_CONDUCT.md).

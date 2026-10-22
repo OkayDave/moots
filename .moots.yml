@@ -1,0 +1,5 @@
+include:
+  - lib/**/*.rb
+exclude: []
+test_command: bundle exec rspec
+timeout: 60

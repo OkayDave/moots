@@ -1,74 +1,57 @@
 # frozen_string_literal: true
 
-require "parser/current"
+require "prism"
+require_relative "mutation"
 
 module Moots
+  # Generate one mutation per supported operator using Prism's byte locations.
   class MutationGenerator
-    ARITHMETIC_OPERATORS = {
-      "+" => "-",
-      "-" => "+",
-      "*" => "/",
-      "/" => "*"
-    }.freeze
+    ARITHMETIC_OPERATORS = { "+" => "-", "-" => "+", "*" => "/", "/" => "*" }.freeze
+    BOOLEAN_OPERATORS = { "&&" => "||", "||" => "&&", "and" => "or", "or" => "and" }.freeze
 
-    BOOLEAN_OPERATORS = {
-      "&&" => "||",
-      "||" => "&&"
-    }.freeze
+    def generate_mutations(code, file_path: "(string)")
+      parsed = Prism.parse(code)
+      unless parsed.success?
+        error = parsed.errors.first
+        raise Error, "#{file_path}:#{error.location.start_line}: #{error.message}"
+      end
 
-    def generate_mutations(code)
       mutations = []
-      buffer = Parser::Source::Buffer.new("(string)")
-      buffer.source = code
-
-      parser = Parser::CurrentRuby.new
-      ast = parser.parse(buffer)
-
-      return [] unless ast
-
-      process_node(ast, mutations, buffer)
+      nodes = [parsed.value]
+      until nodes.empty?
+        node = nodes.pop
+        mutation = mutation_for(node, file_path)
+        mutations << mutation if mutation
+        nodes.concat(node.compact_child_nodes.reverse)
+      end
       mutations
     end
 
     private
 
-    def process_node(node, mutations, buffer)
-      case node.type
-      when :send
-        process_send_node(node, mutations, buffer)
-      when :and, :or
-        process_boolean_node(node, mutations, buffer)
+    def mutation_for(node, file_path)
+      case node
+      when Prism::CallNode
+        replacement = ARITHMETIC_OPERATORS[node.name.to_s]
+        return unless replacement
+
+        location = node.message_loc
+      when Prism::AndNode, Prism::OrNode
+        location = node.operator_loc
+        replacement = BOOLEAN_OPERATORS.fetch(location.slice)
+      else
+        return
       end
 
-      node.children.each do |child|
-        process_node(child, mutations, buffer) if child.is_a?(Parser::AST::Node)
-      end
-    end
-
-    def process_send_node(node, mutations, buffer)
-      return unless node.children[1].is_a?(Symbol)
-
-      operator = node.children[1].to_s
-      return unless ARITHMETIC_OPERATORS.key?(operator)
-
-      generate_operator_mutation(node, operator, ARITHMETIC_OPERATORS[operator], mutations, buffer)
-    end
-
-    def process_boolean_node(node, mutations, buffer)
-      operator = node.type == :and ? "&&" : "||"
-      generate_operator_mutation(node, operator, BOOLEAN_OPERATORS[operator], mutations, buffer)
-    end
-
-    def generate_operator_mutation(node, original_op, mutated_op, mutations, buffer)
-      original_range = node.loc.expression
-      original_code = buffer.source[original_range.begin_pos...original_range.end_pos]
-      mutated_code = original_code.gsub(original_op, mutated_op)
-
-      mutations << Mutation.new(
-        original_code: original_code,
-        mutated_code: mutated_code,
-        line_number: original_range.line,
-        file_path: buffer.name
+      expression = node.location
+      mutated = expression.slice.b
+      mutated[location.start_offset - expression.start_offset, location.length] = replacement
+      Mutation.new(
+        original_code: expression.slice,
+        mutated_code: mutated.force_encoding(expression.slice.encoding),
+        line_number: location.start_line,
+        file_path: file_path,
+        start_offset: expression.start_offset
       )
     end
   end
