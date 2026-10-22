@@ -1,70 +1,50 @@
 # frozen_string_literal: true
 
-require "ostruct"
-require "tempfile"
 require_relative "moots/version"
-require_relative "moots/mutation"
+require_relative "moots/configuration"
 require_relative "moots/mutation_generator"
 require_relative "moots/test_runner"
-require_relative "moots/test_result"
 
+# Sequential mutation testing for Ruby projects.
 module Moots
-  class Error < StandardError; end
+  Result = Struct.new(:mutation, :killed, :test_result, keyword_init: true)
 
   class << self
-    def run(config)
+    # Verify the baseline, then run the suite once per mutation. Always restore bytes.
+    def run(options = {})
+      config = Configuration.new(options).to_h
+      runner = TestRunner.new
+      baseline = runner.run_tests(config[:test_command], timeout: config[:timeout])
+      raise Error, "Baseline tests failed; no mutations applied.\n#{baseline.output}" unless baseline.success?
+
       generator = MutationGenerator.new
-      test_runner = TestRunner.new
-      results = []
-
-      files_to_test = find_files(config[:include], config[:exclude])
-
-      files_to_test.each do |file|
-        next unless File.exist?(file) && File.readable?(file)
-
-        begin
-          code = File.read(file)
-          mutations = generator.generate_mutations(code)
-
-          mutations.each do |mutation|
-            # Apply mutation
-            mutated_code = apply_mutation(code, mutation)
-            File.write(file, mutated_code)
-
-            # Run tests
-            test_result = test_runner.run_tests(config[:test_command])
-
-            # Record result - a mutation is "killed" if the tests fail
-            results << OpenStruct.new(
-              mutation: mutation,
-              killed: test_result.success? == false
-            )
-
-            # Restore original code
-            File.write(file, code)
-          end
-        rescue Errno::EACCES, Errno::ENOENT
-          # Skip files we can't read or that don't exist
-          next
+      find_files(config).flat_map do |file|
+        code = File.binread(file)
+        generator.generate_mutations(code, file_path: file).map do |mutation|
+          test_result = test_mutation(file, code, mutation, runner, config)
+          Result.new(mutation: mutation, killed: !test_result.success?, test_result: test_result)
         end
       end
-
-      results
     end
 
     private
 
-    def find_files(include_patterns, exclude_patterns)
-      files = include_patterns.flat_map { |pattern| Dir[pattern] }
-      exclude_files = exclude_patterns.flat_map { |pattern| Dir[pattern] }
-      files - exclude_files
+    def find_files(config)
+      included = config[:include].flat_map { |pattern| Dir[pattern] }
+      excluded = config[:exclude].flat_map { |pattern| Dir[pattern] }.map { |path| File.expand_path(path) }
+      included.map { |path| File.expand_path(path) }.uniq.sort.reject do |path|
+        excluded.include?(path) || !File.file?(path)
+      end
     end
 
-    def apply_mutation(code, mutation)
-      lines = code.lines
-      line_index = mutation.line_number - 1
-      lines[line_index] = lines[line_index].gsub(mutation.original_code, mutation.mutated_code)
-      lines.join
+    def test_mutation(file, code, mutation, runner, config)
+      mutated_code = mutation.apply(code)
+      begin
+        File.binwrite(file, mutated_code)
+        runner.run_tests(config[:test_command], timeout: config[:timeout])
+      ensure
+        File.binwrite(file, code)
+      end
     end
   end
 end
