@@ -5,6 +5,10 @@ require "rspec/core/rake_task"
 
 RSpec::Core::RakeTask.new(:spec)
 
+RSpec::Core::RakeTask.new(:acceptance) do |task|
+  task.pattern = "spec/comparison_acceptance_spec.rb"
+end
+
 require "rubocop/rake_task"
 
 RuboCop::RakeTask.new

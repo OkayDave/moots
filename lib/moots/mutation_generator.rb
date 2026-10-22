@@ -7,6 +7,8 @@ module Moots
   # Generate one mutation per supported operator using Prism's byte locations.
   class MutationGenerator
     ARITHMETIC_OPERATORS = { "+" => "-", "-" => "+", "*" => "/", "/" => "*" }.freeze
+    COMPARISON_OPERATORS = { "==" => "!=", "!=" => "==", ">" => ">=", ">=" => ">", "<" => "<=", "<=" => "<" }.freeze
+    CALL_OPERATORS = ARITHMETIC_OPERATORS.merge(COMPARISON_OPERATORS).freeze
     BOOLEAN_OPERATORS = { "&&" => "||", "||" => "&&", "and" => "or", "or" => "and" }.freeze
 
     def generate_mutations(code, file_path: "(string)")
@@ -32,7 +34,7 @@ module Moots
     def mutation_for(node, file_path)
       case node
       when Prism::CallNode
-        replacement = ARITHMETIC_OPERATORS[node.name.to_s]
+        replacement = CALL_OPERATORS[node.name.to_s]
         return unless replacement
 
         location = node.message_loc

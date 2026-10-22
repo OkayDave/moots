@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Mutate equality (`==`, `!=`) and strict/inclusive boundaries (`>`, `>=`, `<`, `<=`).
+- Add an independent comparison acceptance corpus for RSpec and Minitest, checking
+  exact kills and survivors against strong and deliberately weak test suites.
 - Support maintained CRuby 3.3, 3.4 and 4.0; raise the minimum from 3.1 to 3.3.
 - Replace the runtime parser dependency with Prism and remove OpenStruct.
 - Refresh dependencies and add cross-platform CI, coverage and self-mutation gates.

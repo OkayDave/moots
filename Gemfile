@@ -8,6 +8,7 @@ gemspec
 gem "irb", "~> 1.18"
 gem "rake", "~> 13.4"
 
+gem "minitest", "~> 6.0"
 gem "rspec", "~> 3.13"
 
 gem "rubocop", "~> 1.92"

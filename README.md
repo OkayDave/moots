@@ -95,6 +95,12 @@ Supported replacements:
 | `-` | `+` |
 | `*` | `/` |
 | `/` | `*` |
+| `==` | `!=` |
+| `!=` | `==` |
+| `>` | `>=` |
+| `>=` | `>` |
+| `<` | `<=` |
+| `<=` | `<` |
 | `&&` | `||` |
 | `||` | `&&` |
 | `and` | `or` |
@@ -105,9 +111,13 @@ calls such as `a.+(b)`. Other operators on the same line, string contents,
 comments and surrounding formatting are preserved. Byte offsets handle
 multiline expressions, Unicode and CRLF files.
 
-Compound assignments (`+=`, `&&=`, etc.), unary operators, comparisons,
-constants and method removal are not currently mutated. Equivalent mutations
-are not automatically filtered.
+Boundary mutations switch between strict and inclusive comparisons, exposing
+missing tests for the value exactly at a limit. Equality mutations invert the
+comparison. Explicit calls such as `a.>=(b)` are supported too.
+
+Compound assignments (`+=`, `&&=`, etc.), unary operators, other comparisons
+(`===`, `<=>`, `=~`, `!~`), constants and method removal are not currently mutated.
+Equivalent mutations are not automatically filtered.
 
 ## Execution and restoration
 
@@ -161,6 +171,7 @@ Invalid input raises `Moots::Error`; source I/O errors also propagate from the A
 ```sh
 bundle install
 bundle exec rake spec       # randomized RSpec suite
+bundle exec rake acceptance # independent RSpec and Minitest comparison fixtures
 bundle exec rake coverage   # 100% line and branch coverage, overall and per file
 bundle exec rake rubocop
 bundle exec rake mutation   # run Moots against all lib/**/*.rb files
@@ -180,6 +191,13 @@ encodings, configuration and CLI behavior, baseline validation, process output,
 deadlines and byte-for-byte restoration. The integration suite proves that
 strong tests kill mutations, weak tests leave survivors, and broken baselines
 are rejected.
+
+The [comparison acceptance corpus](spec/fixtures/comparisons/README.md) uses a
+standalone subject with hand-written expected results, independent of Moots'
+operator tables. RSpec and Minitest each run strong and deliberately weak suites.
+The strong suites kill all six comparison mutations. The weak suites omit the
+exact boundary: equality mutations still die, but all four boundary mutations
+survive. These acceptance checks are also included in the normal spec suite.
 
 The self-mutation run must generate at least one mutation and kill every one.
 CI keeps this check on all supported Linux Ruby versions. Review surviving
