@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Stream baseline and mutation progress, with IDs, survivor expression diffs and
+  rerun arguments; select one mutation using `--mutation ID` or YAML.
+- Add versioned JSON reports (`--format json`) with separate progress output,
+  captured test output and explicit partial-error reports. Interruptions exit 130.
+- Add optional Ruby API progress callbacks and declare the JSON runtime dependency.
 - Mutate equality (`==`, `!=`) and strict/inclusive boundaries (`>`, `>=`, `<`, `<=`).
 - Add an independent comparison acceptance corpus for RSpec and Minitest, checking
   exact kills and survivors against strong and deliberately weak test suites.

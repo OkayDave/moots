@@ -20,10 +20,11 @@ Gem::Specification.new do |spec|
   spec.metadata["source_code_uri"] = "https://github.com/OkayDave/moots"
   spec.metadata["changelog_uri"] = "https://github.com/OkayDave/moots/blob/main/CHANGELOG.md"
 
-  spec.files = Dir.chdir(__dir__) { Dir["lib/**/*.rb", "exe/*", "sig/**/*.rbs", "*.md", "LICENSE.txt"] }
+  spec.files = Dir.chdir(__dir__) { Dir["lib/**/*.rb", "exe/*", "sig/**/*.rbs", "*.md", "docs/**/*.md", "LICENSE.txt"] }
   spec.bindir = "exe"
   spec.executables = spec.files.grep(%r{\Aexe/}) { |f| File.basename(f) }
   spec.require_paths = ["lib"]
 
+  spec.add_dependency "json", ">= 2.7", "< 4"
   spec.add_dependency "prism", "~> 1.9"
 end

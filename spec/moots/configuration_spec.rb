@@ -3,14 +3,16 @@
 RSpec.describe Moots::Configuration do
   it "provides usable defaults" do
     expect(described_class.new.to_h).to eq(
-      include: ["app/**/*.rb", "lib/**/*.rb"], exclude: [], test_command: "bundle exec rspec", timeout: 60
+      include: ["app/**/*.rb",
+                "lib/**/*.rb"], exclude: [], test_command: "bundle exec rspec", timeout: 60, mutation: nil
     )
   end
 
   it "normalizes YAML keys and retains explicit overrides" do
     expect(described_class.new("include" => ["src/*.rb"], "exclude" => ["src/skip.rb"],
                                "test_command" => ["ruby", "tests.rb"], "timeout" => 0.5).to_h)
-      .to eq(include: ["src/*.rb"], exclude: ["src/skip.rb"], test_command: ["ruby", "tests.rb"], timeout: 0.5)
+      .to eq(include: ["src/*.rb"], exclude: ["src/skip.rb"], test_command: ["ruby", "tests.rb"], timeout: 0.5,
+             mutation: nil)
   end
 
   it "does not mutate the supplied hash or expose its internal hash" do
@@ -55,7 +57,7 @@ RSpec.describe Moots::Configuration do
     in_project do
       File.write("config.yml", "include: [src/*.rb]\ntest_command: ruby test.rb\ntimeout: 2\n")
       expect(described_class.load("config.yml")).to eq(
-        include: ["src/*.rb"], exclude: [], test_command: "ruby test.rb", timeout: 2
+        include: ["src/*.rb"], exclude: [], test_command: "ruby test.rb", timeout: 2, mutation: nil
       )
     end
   end
@@ -81,6 +83,16 @@ RSpec.describe Moots::Configuration do
   it "reports a missing file" do
     in_project do
       expect { described_class.load("absent.yml") }.to raise_error(Moots::Error, /Cannot load configuration absent.yml/)
+    end
+  end
+
+  it "accepts a specific mutation ID" do
+    expect(described_class.new(mutation: "0123456789abcdef").to_h[:mutation]).to eq("0123456789abcdef")
+  end
+
+  [12, false, "", "0" * 15, "0" * 17, "ABCDEF0123456789", "g" * 16, "#{"0" * 16}\n"].each do |value|
+    it "rejects malformed mutation ID #{value.inspect}" do
+      expect { described_class.new(mutation: value) }.to raise_error(Moots::Error, /mutation must be/)
     end
   end
 end
