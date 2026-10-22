@@ -23,7 +23,8 @@ require "stringio"
 module ProjectHelpers
   def in_project
     Dir.mktmpdir("moots-spec-") do |directory|
-      Dir.chdir(directory) { yield directory }
+      # macOS may return a /var alias while paths inside the project resolve through /private/var.
+      Dir.chdir(directory) { yield Dir.pwd }
     end
   end
 

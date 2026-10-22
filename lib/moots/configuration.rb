@@ -10,7 +10,8 @@ module Moots
       include: ["app/**/*.rb", "lib/**/*.rb"].freeze,
       exclude: [].freeze,
       test_command: "bundle exec rspec",
-      timeout: 60
+      timeout: 60,
+      mutation: nil
     }.freeze
 
     def self.load(path)
@@ -30,6 +31,7 @@ module Moots
       validate_patterns(:include)
       validate_patterns(:exclude)
       validate_command
+      validate_mutation
       timeout = @options[:timeout]
       return if timeout.is_a?(Numeric) && timeout.real? && timeout.finite? && timeout.positive?
 
@@ -59,6 +61,13 @@ module Moots
 
     def valid_string?(value)
       value.is_a?(String) && !value.strip.empty? && !value.include?("\0")
+    end
+
+    def validate_mutation
+      id = @options[:mutation]
+      return if id.nil? || (id.is_a?(String) && /\A[0-9a-f]{16}\z/.match?(id))
+
+      raise Error, "mutation must be a 16-character lowercase hexadecimal ID or null"
     end
   end
 end

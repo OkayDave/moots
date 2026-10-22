@@ -19,8 +19,8 @@ Supports CRuby **3.3, 3.4 and 4.0**, with a minimum of Ruby 3.3. These are the
 CI runs all three on Linux and Ruby 4.0 on Windows and macOS.
 
 Parsing uses [Prism](https://github.com/ruby/prism), including modern Ruby syntax.
-The old `parser` gem only handles syntax through Ruby 3.3. Prism is the only
-runtime gem dependency; development tools are kept in the Gemfile.
+The old `parser` gem only handles syntax through Ruby 3.3. Runtime dependencies
+are Prism and JSON; development tools are kept in the Gemfile.
 
 ## Installation
 
@@ -46,6 +46,8 @@ From the project root:
 ```sh
 bundle exec moots
 bundle exec moots --config config/moots.yml
+bundle exec moots --format json > moots-report.json
+bundle exec moots --mutation MUTATION_ID
 bundle exec moots --help
 ```
 
@@ -58,6 +60,7 @@ include:
 exclude: []
 test_command: bundle exec rspec
 timeout: 60
+mutation: null
 ```
 
 Paths are relative to the current working directory, including when using an
@@ -84,6 +87,36 @@ Exit statuses:
 | 0 | At least one mutation, all killed (or help/version requested) |
 | 1 | Survivors, or no mutations generated |
 | 2 | Configuration, source, baseline or command execution error |
+| 130 | Interrupted run |
+
+## Progress, survivors and CI reports
+
+Text output starts before the baseline tests run, then shows `[current/total]`
+progress before each mutation's tests. Each result has an ID and a relative
+`file:line` location. Survivors include an expression diff (`-` original, `+`
+replacement) and a `Rerun argv` argument array. The diff covers the mutated
+expression; it is not a patch for the whole file.
+
+Use `--mutation ID` to run a reported mutation with a fresh baseline. It overrides
+the optional `mutation` YAML setting. IDs use the relative file path, byte offset
+and original/replacement bytes, so equivalent checkouts produce the same IDs.
+Source edits can change IDs. An unknown ID is an error; it never silently runs
+the full suite or reports success. Use the same working directory, configuration
+and source revision when reproducing a result.
+
+`--format json` writes one JSON document to stdout; progress and diagnostics go
+to stderr. Test-process output is captured inside the document. The schema is
+described in [docs/reporting.md](docs/reporting.md). It includes:
+
+- `schema_version: 1` and `status: "completed"` or `"error"`.
+- Summary counts and each completed mutation's ID, source location, expressions,
+  killed/survived status, captured test output and rerun arguments.
+- An `error` message on operational failure or interruption. Any partial results
+  cover only completed mutations; an aborted run is never marked completed.
+
+Completion does not mean all mutations were killed. Continue to check the exit
+status (or the summary) in CI. Invalid UTF-8 in report text is replaced with `�`;
+mutation identity and source restoration still use the original bytes.
 
 ## Mutation behavior
 
@@ -163,8 +196,18 @@ end
 `MutationGenerator#generate_mutations(code, file_path: "example.rb")` returns
 mutations with original/replacement expressions and a byte offset.
 `Mutation#apply(code)` returns a changed copy and rejects mismatched source.
+`Mutation#id` returns the rerunnable ID; `Mutation#relative_path` returns its
+project-relative path. Both accept an optional `root:` directory.
 Directly constructed mutations now require `start_offset:`.
 Invalid input raises `Moots::Error`; source I/O errors also propagate from the API.
+
+An optional block receives progress hashes while `Moots.run` still returns the
+results array. Events are `:baseline_started`, `:baseline_passed`,
+`:mutation_started` (with `:mutation`, one-based `:index`, and `:total`) and
+`:mutation_finished` (with `:result`, `:index`, and `:total`). Callbacks execute
+before source modification or after restoration, and callback exceptions propagate.
+After the baseline passes, Moots reads all selected source files to determine the
+mutation count before executing any mutations.
 
 ## Development and verification
 

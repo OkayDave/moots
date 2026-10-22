@@ -13,6 +13,21 @@ RSpec.describe Moots::Mutation do
     )
   end
 
+  it "assigns reproducible IDs using relative paths and exact mutation bytes" do
+    in_project do |directory|
+      first = mutation(file_path: File.join(directory, "lib/math.rb"))
+      copy = mutation(file_path: File.join(directory, "copy/lib/math.rb"))
+      expect(first.id(root: directory)).to match(/\A[0-9a-f]{16}\z/)
+      expect(first.relative_path(root: directory)).to eq("lib/math.rb")
+      expect(copy.id(root: File.join(directory, "copy"))).to eq(first.id(root: directory))
+      expect(mutation(file_path: "lib/math.rb").id).to eq(first.id)
+      %i[file_path start_offset original_code mutated_code].zip(["other.rb", 8, "x + y", "a * b"]).each do |key, value|
+        expect(mutation(key => value).id).not_to eq(mutation.id)
+      end
+      expect(mutation(original_code: "\xFF".b).id).to match(/\A[0-9a-f]{16}\z/)
+    end
+  end
+
   it "changes the requested occurrence and leaves frozen input intact" do
     source = "a + b; a + b"
     expect(mutation.apply(source)).to eq("a + b; a - b")
