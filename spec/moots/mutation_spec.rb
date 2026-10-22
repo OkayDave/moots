@@ -14,7 +14,8 @@ RSpec.describe Moots::Mutation do
   end
 
   it "assigns reproducible IDs using relative paths and exact mutation bytes" do
-    in_project do |directory|
+    in_project do
+      directory = Dir.pwd
       first = mutation(file_path: File.join(directory, "lib/math.rb"))
       copy = mutation(file_path: File.join(directory, "copy/lib/math.rb"))
       expect(first.id(root: directory)).to match(/\A[0-9a-f]{16}\z/)
