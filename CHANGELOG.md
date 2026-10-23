@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Run baselines and mutations in isolated copies by default, preserving uncommitted
+  project files and original report paths/IDs. Add configurable copy exclusions,
+  Bundler path rebasing and an explicit `isolation: false` compatibility mode.
+- Verify cleanup and original-source protection, including forced termination;
+  reject linked paths, special files and source globs that escape the snapshot.
 - Stream baseline and mutation progress, with IDs, survivor expression diffs and
   rerun arguments; select one mutation using `--mutation ID` or YAML.
 - Add versioned JSON reports (`--format json`) with separate progress output,

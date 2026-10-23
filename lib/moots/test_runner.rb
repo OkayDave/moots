@@ -8,9 +8,14 @@ require_relative "test_result"
 module Moots
   # Execute suites with a deadline and concurrently drain both output streams.
   class TestRunner
+    def initialize(chdir: Dir.pwd, env: {})
+      @directory = chdir
+      @environment = env
+    end
+
     def run_tests(command, timeout: 60)
       options = Gem.win_platform? ? { new_pgroup: true } : { pgroup: true }
-      Open3.popen3(*Array(command), **options) do |stdin, stdout, stderr, process|
+      Open3.popen3(@environment, *Array(command), chdir: @directory, **options) do |stdin, stdout, stderr, process|
         stdin.close
         readers = [stdout, stderr].map { |stream| Thread.new { stream.read } }
         completed = false

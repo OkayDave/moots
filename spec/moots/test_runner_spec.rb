@@ -9,6 +9,19 @@ RSpec.describe Moots::TestRunner do
     expect(result.output).to eq("")
   end
 
+  it "runs in the requested directory and environment without changing the parent" do
+    original_directory = Dir.pwd
+    original_environment = ENV.to_h
+    in_project do |directory|
+      result = described_class.new(chdir: directory, env: { "MOOTS_CHILD_ONLY" => "child" })
+                              .run_tests(ruby_command('puts Dir.pwd; puts ENV.fetch("MOOTS_CHILD_ONLY")'))
+      expect(result.output.lines.map(&:chomp)).to eq([directory, "child"])
+      expect(Dir.pwd).to eq(directory)
+    end
+    expect(Dir.pwd).to eq(original_directory)
+    expect(ENV.to_h).to eq(original_environment)
+  end
+
   it "captures failure and stderr" do
     result = runner.run_tests(ruby_command('warn "failure"; exit 1'))
     expect(result).not_to be_success
@@ -95,7 +108,7 @@ RSpec.describe Moots::TestRunner do
       expect(runner).to receive(:system)
         .with("taskkill", "/PID", "456789", "/T", "/F", out: File::NULL, err: File::NULL).and_return(true)
       expect { runner.run_tests("suite", timeout: 1) }.to raise_error(Moots::Error, /timed out/)
-      expect(Open3).to have_received(:popen3).with("suite", new_pgroup: true)
+      expect(Open3).to have_received(:popen3).with({}, "suite", chdir: Dir.pwd, new_pgroup: true)
     end
 
     it "tolerates a process that exits just before POSIX cleanup" do
@@ -103,7 +116,7 @@ RSpec.describe Moots::TestRunner do
       allow(process).to receive(:value).and_raise(Timeout::Error)
       expect(Process).to receive(:kill).with("KILL", -456_789).and_raise(Errno::ESRCH)
       expect { runner.run_tests("suite") }.to raise_error(Moots::Error, /timed out/)
-      expect(Open3).to have_received(:popen3).with("suite", pgroup: true)
+      expect(Open3).to have_received(:popen3).with({}, "suite", chdir: Dir.pwd, pgroup: true)
     end
 
     it "terminates a running command on interruption" do

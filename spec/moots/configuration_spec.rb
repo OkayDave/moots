@@ -4,7 +4,8 @@ RSpec.describe Moots::Configuration do
   it "provides usable defaults" do
     expect(described_class.new.to_h).to eq(
       include: ["app/**/*.rb",
-                "lib/**/*.rb"], exclude: [], test_command: "bundle exec rspec", timeout: 60, mutation: nil
+                "lib/**/*.rb"], exclude: [], test_command: "bundle exec rspec", timeout: 60, mutation: nil,
+      isolation: true, workspace_exclude: ["tmp", "coverage", "pkg", ".rspec_status"]
     )
   end
 
@@ -12,7 +13,7 @@ RSpec.describe Moots::Configuration do
     expect(described_class.new("include" => ["src/*.rb"], "exclude" => ["src/skip.rb"],
                                "test_command" => ["ruby", "tests.rb"], "timeout" => 0.5).to_h)
       .to eq(include: ["src/*.rb"], exclude: ["src/skip.rb"], test_command: ["ruby", "tests.rb"], timeout: 0.5,
-             mutation: nil)
+             mutation: nil, isolation: true, workspace_exclude: ["tmp", "coverage", "pkg", ".rspec_status"])
   end
 
   it "does not mutate the supplied hash or expose its internal hash" do
@@ -33,7 +34,7 @@ RSpec.describe Moots::Configuration do
     expect { described_class.new(typo: true) }.to raise_error(Moots::Error, /Unknown configuration keys: typo/)
   end
 
-  %i[include exclude].each do |key|
+  %i[include exclude workspace_exclude].each do |key|
     [nil, "*.rb", [nil], [1], [""], ["  "], ["a\0b"]].each do |value|
       it "rejects #{key}: #{value.inspect}" do
         expect { described_class.new(key => value) }.to raise_error(Moots::Error, /#{key} must be/)
@@ -57,7 +58,8 @@ RSpec.describe Moots::Configuration do
     in_project do
       File.write("config.yml", "include: [src/*.rb]\ntest_command: ruby test.rb\ntimeout: 2\n")
       expect(described_class.load("config.yml")).to eq(
-        include: ["src/*.rb"], exclude: [], test_command: "ruby test.rb", timeout: 2, mutation: nil
+        include: ["src/*.rb"], exclude: [], test_command: "ruby test.rb", timeout: 2, mutation: nil,
+        isolation: true, workspace_exclude: ["tmp", "coverage", "pkg", ".rspec_status"]
       )
     end
   end
@@ -88,6 +90,17 @@ RSpec.describe Moots::Configuration do
 
   it "accepts a specific mutation ID" do
     expect(described_class.new(mutation: "0123456789abcdef").to_h[:mutation]).to eq("0123456789abcdef")
+  end
+
+  it "accepts explicit in-place operation and custom copy exclusions" do
+    expect(described_class.new(isolation: false, workspace_exclude: ["cache"]).to_h)
+      .to include(isolation: false, workspace_exclude: ["cache"])
+  end
+
+  [nil, "false", 0, []].each do |value|
+    it "rejects isolation: #{value.inspect}" do
+      expect { described_class.new(isolation: value) }.to raise_error(Moots::Error, /isolation must be/)
+    end
   end
 
   [12, false, "", "0" * 15, "0" * 17, "ABCDEF0123456789", "g" * 16, "#{"0" * 16}\n"].each do |value|

@@ -16,6 +16,13 @@ RSpec.describe Moots::Reporter do
     described_class.new(format: format, out: out, err: err, **options)
   end
 
+  it "flushes workspace preparation progress to the selected stream" do
+    expect(err).to receive(:flush)
+    reporter("json").call(type: :workspace_started)
+    expect(err.string).to eq("Preparing isolated working copy...\n")
+    expect(out.string).to eq("")
+  end
+
   it "streams and flushes progress, expression diffs and rerun arguments" do
     report = reporter
     killed = result(true)

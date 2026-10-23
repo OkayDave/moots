@@ -2,7 +2,7 @@
 
 RSpec.describe Moots do
   let(:runner) { instance_double(Moots::TestRunner) }
-  let(:config) { { include: ["*.rb"], exclude: [], test_command: ["test-suite"], timeout: 2 } }
+  let(:config) { { include: ["*.rb"], exclude: [], test_command: ["test-suite"], timeout: 2, isolation: false } }
 
   before do
     allow(Moots::TestRunner).to receive(:new).and_return(runner)
