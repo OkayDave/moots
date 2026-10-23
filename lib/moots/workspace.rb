@@ -4,12 +4,11 @@ require "fileutils"
 require "tmpdir"
 require "pathname"
 require_relative "error"
+require_relative "environment"
 
 module Moots
   # A disposable snapshot of the current project, with paths mapped back for reports.
   class Workspace
-    PATH_VARIABLES = %w[BUNDLE_GEMFILE BUNDLE_APP_CONFIG BUNDLE_BIN_PATH BUNDLE_PATH GEM_HOME].freeze
-    PATH_LISTS = %w[GEM_PATH RUBYLIB PATH].freeze
     METADATA = %w[.git .hg .svn].freeze
 
     attr_reader :directory
@@ -44,6 +43,17 @@ module Moots
       end.uniq.sort
     end
 
+    def with_workers(count)
+      Dir.mktmpdir("moots-workers-") do |temporary|
+        directory = File.realpath(temporary)
+        workers = Array.new(count) do |index|
+          self.class.new(isolation: true, workspace_exclude: [], root: @directory)
+              .copy_to(File.join(directory, index.to_s))
+        end
+        yield workers
+      end
+    end
+
     def original_path(path)
       File.expand_path(Pathname.new(path).relative_path_from(Pathname.new(@directory)).to_s, @root)
     end
@@ -54,19 +64,17 @@ module Moots
       value.map { |argument| rebase(argument) }
     end
 
-    def environment
-      (PATH_VARIABLES + PATH_LISTS).each_with_object({}) do |name, overrides|
-        [name, "BUNDLER_ORIG_#{name}"].each do |key|
-          next unless ENV.key?(key)
+    def environment(source = ENV)
+      Environment.rebase(source) { |path| rebase(path) }
+    end
 
-          overrides[key] = if PATH_LISTS.include?(name)
-                             ENV.fetch(key).split(File::PATH_SEPARATOR, -1).map { |path| rebase(path) }
-                                .join(File::PATH_SEPARATOR)
-                           else
-                             rebase(ENV.fetch(key))
-                           end
-        end
-      end
+    protected
+
+    def copy_to(destination)
+      @directory = destination
+      Dir.mkdir(destination)
+      copy_directory(@root, destination)
+      self
     end
 
     private

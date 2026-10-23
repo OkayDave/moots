@@ -55,8 +55,9 @@ RSpec.describe "Reporting through the executable" do
         File.open(#{File.join(directory, "invocations").dump}, "a") { |file| file.puts(File.binread("math.rb")) }
         puts "test chatter"
       RUBY
-      configure([RbConfig.ruby, "check.rb"], "config with spaces.yml")
-      stdout, stderr, status = Open3.capture3(*command("--format", "json", "--config", "config with spaces.yml"))
+      configure([RbConfig.ruby, "check.rb"], "config with spaces.yml", "jobs" => 1)
+      stdout, stderr, status = Open3.capture3(*command("--format", "json", "--jobs", "2",
+                                                       "--config", "config with spaces.yml"))
       expect(status.exitstatus).to eq(1), stderr
       report = JSON.parse(stdout)
       expect(report).to include("status" => "completed", "schema_version" => 1)

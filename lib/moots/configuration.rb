@@ -13,6 +13,7 @@ module Moots
       timeout: 60,
       mutation: nil,
       isolation: true,
+      jobs: 1,
       workspace_exclude: ["tmp", "coverage", "pkg", ".rspec_status"].freeze
     }.freeze
 
@@ -35,6 +36,7 @@ module Moots
       validate_patterns(:workspace_exclude)
       raise Error, "isolation must be true or false" unless [true, false].include?(@options[:isolation])
 
+      validate_jobs
       validate_command
       validate_mutation
       timeout = @options[:timeout]
@@ -48,6 +50,12 @@ module Moots
     end
 
     private
+
+    def validate_jobs
+      jobs = @options[:jobs]
+      raise Error, "jobs must be a positive integer" unless jobs.is_a?(Integer) && jobs.positive?
+      raise Error, "jobs greater than 1 require isolation: true" if jobs > 1 && !@options[:isolation]
+    end
 
     def validate_patterns(key)
       patterns = @options[key]

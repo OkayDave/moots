@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add optional parallel execution with `--jobs N` or YAML/API `jobs`, keeping one
+  worker as the default. Each worker receives a copy of the verified baseline;
+  errors and interruption cancel active commands and clean up all copies.
+- Preserve source order in parallel API/JSON results, including partial errors,
+  while serializing live progress callbacks on the calling thread. Check the
+  independent RSpec/Minitest corpus with both one and two workers.
 - Run baselines and mutations in isolated copies by default, preserving uncommitted
   project files and original report paths/IDs. Add configurable copy exclusions,
   Bundler path rebasing and an explicit `isolation: false` compatibility mode.

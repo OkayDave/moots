@@ -47,13 +47,16 @@ module Moots
 
     def run_requested?
       parser = OptionParser.new do |options|
-        options.banner = "Usage: moots [--config PATH] [--format text|json] [--mutation ID]"
+        options.banner = "Usage: moots [--config PATH] [--format text|json] [--mutation ID] [--jobs N]"
         options.on("-c", "--config PATH", "Configuration file (default: .moots.yml)") do |value|
           @path = value
           @explicit_path = true
         end
         options.on("--format FORMAT", %w[text json], "Output format (default: text)") { |value| @format = value }
         options.on("--mutation ID", "Run one mutation by its reported ID") { |value| @overrides[:mutation] = value }
+        options.on("-j", "--jobs N", Integer, "Concurrent isolated workers (default: 1)") do |value|
+          @overrides[:jobs] = value
+        end
         options.on("-v", "--version", "Print version") do
           @out.puts(VERSION)
           return false

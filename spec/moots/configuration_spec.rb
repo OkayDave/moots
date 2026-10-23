@@ -5,7 +5,7 @@ RSpec.describe Moots::Configuration do
     expect(described_class.new.to_h).to eq(
       include: ["app/**/*.rb",
                 "lib/**/*.rb"], exclude: [], test_command: "bundle exec rspec", timeout: 60, mutation: nil,
-      isolation: true, workspace_exclude: ["tmp", "coverage", "pkg", ".rspec_status"]
+      isolation: true, jobs: 1, workspace_exclude: ["tmp", "coverage", "pkg", ".rspec_status"]
     )
   end
 
@@ -13,7 +13,7 @@ RSpec.describe Moots::Configuration do
     expect(described_class.new("include" => ["src/*.rb"], "exclude" => ["src/skip.rb"],
                                "test_command" => ["ruby", "tests.rb"], "timeout" => 0.5).to_h)
       .to eq(include: ["src/*.rb"], exclude: ["src/skip.rb"], test_command: ["ruby", "tests.rb"], timeout: 0.5,
-             mutation: nil, isolation: true, workspace_exclude: ["tmp", "coverage", "pkg", ".rspec_status"])
+             mutation: nil, isolation: true, jobs: 1, workspace_exclude: ["tmp", "coverage", "pkg", ".rspec_status"])
   end
 
   it "does not mutate the supplied hash or expose its internal hash" do
@@ -59,7 +59,7 @@ RSpec.describe Moots::Configuration do
       File.write("config.yml", "include: [src/*.rb]\ntest_command: ruby test.rb\ntimeout: 2\n")
       expect(described_class.load("config.yml")).to eq(
         include: ["src/*.rb"], exclude: [], test_command: "ruby test.rb", timeout: 2, mutation: nil,
-        isolation: true, workspace_exclude: ["tmp", "coverage", "pkg", ".rspec_status"]
+        isolation: true, jobs: 1, workspace_exclude: ["tmp", "coverage", "pkg", ".rspec_status"]
       )
     end
   end
@@ -90,6 +90,18 @@ RSpec.describe Moots::Configuration do
 
   it "accepts a specific mutation ID" do
     expect(described_class.new(mutation: "0123456789abcdef").to_h[:mutation]).to eq("0123456789abcdef")
+  end
+
+  [nil, false, "2", 0, -1, 1.5, 2.0].each do |value|
+    it "rejects jobs: #{value.inspect}" do
+      expect { described_class.new(jobs: value) }.to raise_error(Moots::Error, /jobs must be a positive integer/)
+    end
+  end
+
+  it "requires isolation when more than one worker is requested" do
+    expect(described_class.new(jobs: 2).to_h[:jobs]).to eq(2)
+    expect { described_class.new(jobs: 2, isolation: false) }.to raise_error(Moots::Error, /require isolation/)
+    expect(described_class.new(jobs: 1, isolation: false).to_h[:jobs]).to eq(1)
   end
 
   it "accepts explicit in-place operation and custom copy exclusions" do

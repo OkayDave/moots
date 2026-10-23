@@ -27,7 +27,7 @@ module Moots
         @progress.puts("[#{event.fetch(:index)}/#{event.fetch(:total)}] Testing #{location(event.fetch(:mutation))}")
       when :mutation_finished
         result = event.fetch(:result)
-        @results << result
+        @results[event.fetch(:index, @results.size)] = result
         @progress.puts("#{result.killed ? "KILLED" : "SURVIVED"} #{location(result.mutation)}")
         survivor(result.mutation) unless result.killed
       else
@@ -80,12 +80,14 @@ module Moots
     end
 
     def summary
-      killed = @results.count(&:killed)
-      { mutations: @results.size, killed: killed, survived: @results.size - killed }
+      completed = @results.compact
+      killed = completed.count(&:killed)
+      { mutations: completed.size, killed: killed, survived: completed.size - killed }
     end
 
     def document(status)
-      { schema_version: 1, status: status, summary: summary, results: @results.map { |result| serialize(result) } }
+      serialized = @results.compact.map { |result| serialize(result) }
+      { schema_version: 1, status: status, summary: summary, results: serialized }
     end
 
     def serialize(result)

@@ -36,7 +36,7 @@ jobs:
         run: bundle exec rake build
       - name: Dogfood every library file
         if: runner.os == 'Linux'
-        run: bundle exec rake mutation
+        run: bundle exec rake "mutation[2]"
 
   coverage:
     name: Lint and complete runtime coverage

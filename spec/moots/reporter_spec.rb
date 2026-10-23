@@ -80,6 +80,18 @@ RSpec.describe Moots::Reporter do
     expect(err.string).to eq("moots: disk full\n")
   end
 
+  it "retains completed parallel results in source order, omitting unfinished slots on error" do
+    report = reporter("json")
+    first = result(true, "first")
+    third = result(false, "third")
+    report.call(type: :mutation_finished, index: 3, result: third)
+    report.call(type: :mutation_finished, index: 1, result: first)
+    report.error("worker failed")
+    document = JSON.parse(out.string)
+    expect(document.fetch("results").map { |item| item.fetch("test_output") }).to eq(%w[first third])
+    expect(document.fetch("summary")).to eq("mutations" => 2, "killed" => 1, "survived" => 1)
+  end
+
   it "rejects unknown progress events" do
     expect { reporter.call(type: :unexpected) }.to raise_error(ArgumentError, /Unknown progress event/)
   end

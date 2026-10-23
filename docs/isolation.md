@@ -65,12 +65,19 @@ be executed from the original project directory with the same source and config.
 
 ## Lifetime and limits
 
-One temporary directory is used for the whole run. Source bytes are restored
-between mutants; other files created by tests can persist until the run ends.
-Tests should reset their own state between invocations. Cleanup runs on success,
-failure, timeout and interruption. Hard termination can leave an orphan named
-`moots-workspace-*` in the system temporary directory. The original source bytes
-remain untouched by mutation writes even in that case.
+With `jobs: 1`, one temporary directory is used for the whole run. With multiple
+workers, the baseline runs once and each worker receives an independent copy of
+that verified snapshot, including baseline-generated artifacts. Workers reuse
+their own copy across assigned mutants; no two workers mutate the same copy.
+Source bytes are restored between mutants, while other test-generated files can
+persist in that worker. Tests should reset their own state between invocations.
+
+Cleanup runs on success, failure, timeout and interruption. Active worker test
+commands are stopped before their directories are removed. Hard termination can
+leave `moots-workspace-*` or `moots-workers-*` directories in the system temporary
+directory. The original source bytes remain untouched by mutation writes even
+in that case. Parallel runs need extra disk space and do not isolate shared
+external resources such as databases, services and network ports.
 
 The temporary directory must be outside the project to prevent recursive copying.
 The snapshot is not atomic: avoid editing source while it is being copied.
