@@ -114,6 +114,24 @@ RSpec.describe Moots::CLI do
     end
   end
 
+  ["-j", "--jobs"].each do |flag|
+    it "overrides YAML workers with #{flag}" do
+      in_project do
+        File.write(".moots.yml", "jobs: 2")
+        expect(Moots).to receive(:run).with(hash_including(jobs: 3)).and_return([result(true)])
+        expect(invoke(flag, "3")).to eq(0)
+      end
+    end
+  end
+
+  [["--jobs"], ["--jobs", "many"], ["--jobs", "1.5"]].each do |arguments|
+    it "rejects invalid worker arguments #{arguments.inspect}" do
+      expect(Moots).not_to receive(:run)
+      expect(invoke(*arguments)).to eq(2)
+      expect(err.string).to include("moots:")
+    end
+  end
+
   it "returns a complete JSON report and failing exit status for an empty run" do
     in_project do
       allow(Moots).to receive(:run).and_return([])

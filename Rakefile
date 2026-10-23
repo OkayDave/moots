@@ -19,8 +19,8 @@ task :coverage do
 end
 
 desc "Dogfood Moots against every library file (fails on survivors or zero mutations)"
-task :mutation do
-  sh({ "COVERAGE" => nil }, RbConfig.ruby, "-Ilib", "exe/moots")
+task :mutation, [:jobs] do |_task, arguments|
+  sh({ "COVERAGE" => nil }, RbConfig.ruby, "-Ilib", "exe/moots", "--jobs", arguments.fetch(:jobs, "1"))
 end
 
 desc "Run lint, coverage, and self-mutation checks"

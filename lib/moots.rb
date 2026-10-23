@@ -5,8 +5,9 @@ require_relative "moots/configuration"
 require_relative "moots/mutation_generator"
 require_relative "moots/test_runner"
 require_relative "moots/workspace"
+require_relative "moots/worker_pool"
 
-# Sequential mutation testing for Ruby projects.
+# Mutation testing for Ruby projects with isolated test processes.
 module Moots
   Result = Struct.new(:mutation, :killed, :test_result, keyword_init: true)
 
@@ -26,6 +27,8 @@ module Moots
       runner = TestRunner.new(chdir: workspace.directory, env: workspace.environment)
       verify_baseline(runner, config, progress)
       targets = mutation_targets(config, workspace)
+      return run_parallel(targets, config, workspace, progress) if config[:jobs] > 1 && targets.size > 1
+
       targets.each_with_index.map do |(file, code, mutation), index|
         position = { index: index + 1, total: targets.size }
         emit(progress, :mutation_started, **position, mutation: mutation)
@@ -33,6 +36,26 @@ module Moots
         result = Result.new(mutation: mutation, killed: !test_result.success?, test_result: test_result)
         emit(progress, :mutation_finished, **position, result: result)
         result
+      end
+    end
+
+    def run_parallel(targets, config, workspace, progress)
+      workspace.with_workers([config[:jobs], targets.size].min) do |copies|
+        workers = copies.map do |copy|
+          runner = TestRunner.new(chdir: copy.directory, env: copy.environment(workspace.environment))
+          [copy, runner, config.merge(test_command: copy.command(config[:test_command]))]
+        end
+        before = lambda do |target, index|
+          emit(progress, :mutation_started, index: index + 1, total: targets.size, mutation: target.last)
+        end
+        after = lambda do |result, index|
+          emit(progress, :mutation_finished, index: index + 1, total: targets.size, result: result)
+        end
+        WorkerPool.new(workers, before: before, after: after).map(targets) do |(copy, runner, options), target|
+          file, code, mutation = target
+          test_result = test_mutation(copy.command([file]).first, code, mutation, runner, options)
+          Result.new(mutation: mutation, killed: !test_result.success?, test_result: test_result)
+        end
       end
     end
 

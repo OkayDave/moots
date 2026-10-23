@@ -48,6 +48,7 @@ bundle exec moots
 bundle exec moots --config config/moots.yml
 bundle exec moots --format json > moots-report.json
 bundle exec moots --mutation MUTATION_ID
+bundle exec moots --jobs 2
 bundle exec moots --help
 ```
 
@@ -62,6 +63,7 @@ test_command: bundle exec rspec
 timeout: 60
 mutation: null
 isolation: true
+jobs: 1
 workspace_exclude: [tmp, coverage, pkg, .rspec_status]
 ```
 
@@ -202,6 +204,29 @@ disposable checkout and avoid concurrent edits or mutation jobs. An `ensure`
 block restores source bytes after normal failures, but cannot protect against
 hard termination, power loss or a failed restoration write.
 
+## Parallel execution
+
+`--jobs N` (or `jobs: N` in YAML/the Ruby API) runs up to N test commands at once.
+The default is `1`, preserving sequential execution. Parallel execution requires
+`isolation: true`; in-place concurrent mutations are rejected.
+
+Moots runs one baseline, then prepares an independent copy of that verified
+snapshot for each worker. Workers include any artifacts produced by the baseline,
+but never share mutated files. The worker count is capped at the number of
+selected mutations. Empty runs and single-mutation reruns avoid creating a pool.
+
+Start with `--jobs 2` and size the pool for your available CPU, memory and disk.
+Each worker needs a full project copy and may itself run a parallel test suite.
+Working copies do not isolate databases, network ports or external services;
+keep `jobs: 1` for suites that cannot safely run concurrently.
+
+Progress and completed-result messages can arrive out of order, with each
+mutation retaining its original index and ID. The returned Ruby array and final
+JSON results stay in source order. Progress callbacks execute serially on the
+calling thread. Operational errors, callback failures and interruptions stop
+the pool, terminate active test commands and clean up all working copies.
+Partial JSON error reports retain only completed results, in source order.
+
 ## Ruby API
 
 ```ruby
@@ -246,6 +271,7 @@ bundle exec rake acceptance # independent RSpec and Minitest comparison fixtures
 bundle exec rake coverage   # 100% line and branch coverage, overall and per file
 bundle exec rake rubocop
 bundle exec rake mutation   # run Moots against all lib/**/*.rb files
+bundle exec rake "mutation[2]" # dogfood with two isolated workers
 bundle exec rake verify     # lint, coverage, then dogfood
 bundle exec rake build
 ```
@@ -255,6 +281,8 @@ because Bundler loads its release constant before coverage starts; the version
 is checked separately. No runtime implementation file is excluded from
 self-mutation. The mutation task disables coverage thresholds in child suites
 so kills come from test failures rather than uncovered-line enforcement.
+This repository's `.moots.yml` uses RSpec's `--fail-fast`: the passing baseline
+still runs every example, while a mutant stops at its first failing assertion.
 
 Tests use temporary projects, real subprocesses and controlled failures. They
 exercise every supported operator, exact mutation locations, modern syntax,
@@ -271,7 +299,7 @@ exact boundary: equality mutations still die, but all four boundary mutations
 survive. These acceptance checks are also included in the normal spec suite.
 
 The self-mutation run must generate at least one mutation and kill every one.
-CI keeps this check on all supported Linux Ruby versions. Review surviving
+CI runs it with two workers on all supported Linux Ruby versions. Review surviving
 mutations and improve behavioral assertions; do not exclude implementation
 files just to get a green result.
 

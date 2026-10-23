@@ -1,5 +1,5 @@
 include:
   - lib/**/*.rb
 exclude: []
-test_command: bundle exec rspec
+test_command: bundle exec rspec --fail-fast
 timeout: 60

@@ -60,6 +60,11 @@ not a score for the whole intended run. A failed or interrupted mutation is not
 recorded as killed or survived. A failed baseline has an empty results array.
 Hard termination cannot produce a final document.
 
+With `--jobs N`, progress messages can arrive in completion order. Each mutation
+keeps its original index and ID; final JSON results, including partial error
+results, remain in source order. The rerun command selects one mutation and does
+not need to preserve a CLI worker-count override.
+
 Report strings are decoded as UTF-8 with invalid bytes replaced by `�`. IDs use
 the exact source bytes. The test runner combines stdout/stderr and trims leading
 and trailing whitespace before storing `test_output`.

@@ -50,6 +50,67 @@ RSpec.describe Moots::Workspace do
     end
   end
 
+  it "creates independent workers from the verified snapshot, including baseline artifacts and rebased environment" do
+    in_project do |root|
+      source = write_source("math.rb", "1 + 2")
+      worker_directories = []
+      workspace.open do |baseline|
+        File.write(source, "later checkout edit")
+        FileUtils.mkdir_p(File.join(baseline.directory, "tmp"))
+        File.write(File.join(baseline.directory, "tmp/artifact"), "from baseline")
+        baseline.with_workers(2) do |copies|
+          worker_directories = copies.map(&:directory)
+          expect(worker_directories.uniq.size).to eq(2)
+          copies.each do |copy|
+            expect(File.read(File.join(copy.directory, "math.rb"))).to eq("1 + 2")
+            expect(File.read(File.join(copy.directory, "tmp/artifact"))).to eq("from baseline")
+            expect(copy.environment("RUBYLIB" => "#{baseline.directory}/lib", "PATH" => "#{root}-outside/bin"))
+              .to eq("RUBYLIB" => "#{copy.directory}/lib", "PATH" => "#{root}-outside/bin")
+          end
+          File.write(File.join(copies.first.directory, "math.rb"), "1 - 2")
+          expect(File.read(File.join(copies.last.directory, "math.rb"))).to eq("1 + 2")
+          expect(File.read(File.join(baseline.directory, "math.rb"))).to eq("1 + 2")
+        end
+        expect(worker_directories).to all(satisfy { |path| !File.exist?(path) })
+      end
+      expect(File.read(source)).to eq("later checkout edit")
+    end
+  end
+
+  it "cleans up every worker copy when execution fails" do
+    in_project do
+      directories = []
+      workspace.open do |baseline|
+        expect do
+          baseline.with_workers(2) do |copies|
+            directories = copies.map(&:directory)
+            raise Interrupt
+          end
+        end.to raise_error(Interrupt)
+        expect(directories).to all(satisfy { |path| !File.exist?(path) })
+      end
+    end
+  end
+
+  it "removes previously prepared workers if a later copy fails" do
+    in_project do
+      write_source
+      workspace.open do |baseline|
+        failed_destination = nil
+        allow(FileUtils).to receive(:copy_file).and_wrap_original do |original, from, to, preserve|
+          if to.include?("/1/")
+            failed_destination = to
+            raise Errno::ENOSPC
+          end
+          original.call(from, to, preserve)
+        end
+        expect { baseline.with_workers(2) { raise "must not run" } }.to raise_error(Errno::ENOSPC)
+        expect(File.exist?(File.dirname(failed_destination, 2))).to be(false)
+        expect(File.read(File.join(baseline.directory, "example.rb"))).to eq("a + b")
+      end
+    end
+  end
+
   it "maps glob results and literal argument paths while preserving strings and external paths" do
     in_project do |root|
       first = write_source("lib/a.rb")
