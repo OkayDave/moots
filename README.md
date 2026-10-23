@@ -281,6 +281,8 @@ because Bundler loads its release constant before coverage starts; the version
 is checked separately. No runtime implementation file is excluded from
 self-mutation. The mutation task disables coverage thresholds in child suites
 so kills come from test failures rather than uncovered-line enforcement.
+This repository's `.moots.yml` uses RSpec's `--fail-fast`: the passing baseline
+still runs every example, while a mutant stops at its first failing assertion.
 
 Tests use temporary projects, real subprocesses and controlled failures. They
 exercise every supported operator, exact mutation locations, modern syntax,

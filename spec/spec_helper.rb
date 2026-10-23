@@ -41,6 +41,27 @@ module ProjectHelpers
   def test_result(success, output = "")
     Moots::TestResult.new(success: success, output: output)
   end
+
+  def capture_command(*command, timeout: 15)
+    options = Gem.win_platform? ? { new_pgroup: true } : { pgroup: true }
+    Open3.popen3(*command, **options) do |stdin, stdout, stderr, process|
+      stdin.close
+      readers = [stdout, stderr].map { |stream| Thread.new { stream.read } }
+      begin
+        Timeout.timeout(timeout) { [*readers.map(&:value), process.value] }
+      ensure
+        if process.alive?
+          if Gem.win_platform?
+            system("taskkill", "/PID", process.pid.to_s, "/T", "/F", out: File::NULL, err: File::NULL)
+          else
+            Process.kill("KILL", -process.pid)
+          end
+        end
+        readers.each(&:kill)
+        readers.each(&:join)
+      end
+    end
+  end
 end
 
 RSpec.configure do |config|

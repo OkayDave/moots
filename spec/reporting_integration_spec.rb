@@ -56,8 +56,8 @@ RSpec.describe "Reporting through the executable" do
         puts "test chatter"
       RUBY
       configure([RbConfig.ruby, "check.rb"], "config with spaces.yml", "jobs" => 1)
-      stdout, stderr, status = Open3.capture3(*command("--format", "json", "--jobs", "2",
-                                                       "--config", "config with spaces.yml"))
+      stdout, stderr, status = capture_command(*command("--format", "json", "--jobs", "2",
+                                                        "--config", "config with spaces.yml"))
       expect(status.exitstatus).to eq(1), stderr
       report = JSON.parse(stdout)
       expect(report).to include("status" => "completed", "schema_version" => 1)
@@ -68,7 +68,7 @@ RSpec.describe "Reporting through the executable" do
       expect(selected.fetch("original")).to eq("4 > 3")
       File.write("invocations", "")
       # Replace only the installed executable prefix; pass reported arguments literally.
-      stdout, stderr, status = Open3.capture3(*command("--format", "json", *selected.fetch("rerun").drop(3)))
+      stdout, stderr, status = capture_command(*command("--format", "json", *selected.fetch("rerun").drop(3)))
       expect(status.exitstatus).to eq(1), stderr
       repeated = JSON.parse(stdout)
       expect(repeated.fetch("results")).to eq([selected])
@@ -81,7 +81,7 @@ RSpec.describe "Reporting through the executable" do
     in_project do
       path = write_source("math.rb", "VALUE = 1 + 2")
       configure(ruby_command('abort "broken baseline"'))
-      stdout, stderr, status = Open3.capture3(*command("--format", "json"))
+      stdout, stderr, status = capture_command(*command("--format", "json"))
       expect(status.exitstatus).to eq(2)
       report = JSON.parse(stdout)
       expect(report).to include("status" => "error", "results" => [])

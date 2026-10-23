@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 RSpec.describe "Comparison mutation acceptance" do
+  around { |example| Timeout.timeout(20) { example.run } }
+
   let(:fixture) { File.expand_path("fixtures/comparisons", __dir__) }
   let(:expected_mutations) do
     [

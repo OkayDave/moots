@@ -1,6 +1,12 @@
 # frozen_string_literal: true
 
 RSpec.describe ProjectHelpers do
+  it "bounds stalled integration commands and reaps their processes" do
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    expect { capture_command(*ruby_command("sleep 30"), timeout: 0.2) }.to raise_error(Timeout::Error)
+    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 5
+  end
+
   it "yields the resolved working directory when temporary projects use a directory alias", unless: Gem.win_platform? do
     Dir.mktmpdir("moots-path-alias-") do |parent|
       real_directory = File.join(parent, "project")
