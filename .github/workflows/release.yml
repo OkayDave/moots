@@ -1,0 +1,37 @@
+name: Release gem
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish to RubyGems.org
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1
+        with:
+          ruby-version: ruby
+          bundler-cache: true
+      - uses: rubygems/release-gem@7f9650160c1a4e7989fdc9855807bdbd421d8b6b # v1.4.1
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(bundle exec ruby -Ilib -e 'require "moots/version"; print Moots::VERSION')"
+          gh release view "v${version}" >/dev/null 2>&1 || \
+            gh release create "v${version}" --generate-notes --title "Moots ${version}"

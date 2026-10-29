@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 - 2026-10-29
 
 - Add optional parallel execution with `--jobs N` or YAML/API `jobs`, keeping one
   worker as the default. Each worker receives a copy of the verified baseline;
@@ -32,7 +32,3 @@
 - Add command deadlines, output capture and process cleanup; distinguish operational
   errors from killed mutations and fail empty mutation runs.
 - Expand unit and subprocess integration tests with full runtime line/branch coverage.
-
-## 0.1.0
-
-- Initial release.
