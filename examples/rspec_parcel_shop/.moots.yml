@@ -1,0 +1,5 @@
+include:
+  - lib/**/*.rb
+test_command: [bundle, exec, rspec, spec/strong]
+timeout: 30
+jobs: 2

@@ -1,0 +1,5 @@
+include:
+  - lib/**/*.rb
+test_command: [bundle, exec, ruby, test/strong/registration_test.rb]
+timeout: 30
+jobs: 2
