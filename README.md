@@ -32,8 +32,9 @@ group :development, :test do
 end
 ```
 
-For this unreleased checkout, use `gem "moots", path: "/path/to/moots"` instead,
-or run `bundle exec rake install` here. Then run `bundle install`.
+To use a development checkout instead, add
+`gem "moots", path: "/path/to/moots"` to the project Gemfile, or run
+`bundle exec rake install` in this repository. Then run `bundle install`.
 
 Windows installations need RubyInstaller's MSYS2 development toolchain to build
 Prism and development dependencies (`ridk install`). This repository can also be
