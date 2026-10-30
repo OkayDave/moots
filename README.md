@@ -304,6 +304,20 @@ CI runs it with two workers on all supported Linux Ruby versions. Review survivi
 mutations and improve behavioral assertions; do not exclude implementation
 files just to get a green result.
 
+## Example projects
+
+The [`examples`](examples) directory contains two independent consumer projects:
+
+- [`rspec_parcel_shop`](examples/rspec_parcel_shop) tests parcel-pricing and
+  delivery boundaries with RSpec.
+- [`minitest_workshop_booking`](examples/minitest_workshop_booking) tests capacity
+  and waitlisting rules with Minitest.
+
+Each project installs the published `moots` gem and includes a strong suite that
+kills every generated mutation plus a realistic weak suite that passes normally
+while leaving mutations alive. Their READMEs show both workflows, and a separate
+CI matrix verifies the examples on Ruby 3.3 and 4.0.
+
 ## Contributing and license
 
 Bug reports and pull requests are welcome at
